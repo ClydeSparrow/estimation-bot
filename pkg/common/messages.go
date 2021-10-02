@@ -1,11 +1,10 @@
-package main
+package common
 
 import (
 	"bytes"
 	"fmt"
 
 	"github.com/ClydeSparrow/estimation-bot/internal/util"
-	"github.com/ClydeSparrow/estimation-bot/pkg/common"
 )
 
 const (
@@ -13,6 +12,36 @@ const (
 	VOTING_ESTIMATED_MESSAGE = "Voting is finished because SP difference is less than 3"
 	UNKNOWN_COMMAND_MESSAGE  = "Sorry, I don't understand this command"
 )
+
+// ====================================
+
+func StartMessages(title string) []Data {
+	return []Data{
+		{
+			Key:     "public",
+			Message: StartedMessage(title),
+		},
+		{
+			Key:     "private",
+			Message: VOTING_GREETING_MESSAGE,
+		},
+	}
+}
+
+func FinishedVotingMessages(score int) []Data {
+	return []Data{
+		{
+			Key:     "public",
+			Message: VOTING_ESTIMATED_MESSAGE,
+		},
+		{
+			Key:     "private",
+			Message: fmt.Sprintf("Final score: %d", score),
+		},
+	}
+}
+
+// ====================================
 
 func StatusMessage(voted, skipped int) string {
 	b := new(bytes.Buffer)
@@ -31,14 +60,12 @@ func StatusMessage(voted, skipped int) string {
 	return b.String()
 }
 
-func StoppedMessage(result common.VotingResult) string {
-	var borderLine string
-	if result.Title == "" {
-		borderLine = "╚══════════════╝"
+func StartedMessage(title string) string {
+	if title == "" {
+		return "╔══════════════╗"
 	} else {
-		borderLine = fmt.Sprintf("╚═════ %s ═════╝", result.Title)
+		return fmt.Sprintf("╔═════%s═════╗", title)
 	}
-	return fmt.Sprintf("%s\n\nVoting stopped\nAvg Score: %.2f\n", borderLine, result.AvgScore)
 }
 
 func ScoreboardMessage(scores map[int][]string) string {

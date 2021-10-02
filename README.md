@@ -35,6 +35,7 @@ Overall architecture was developed around two channels
     - Idea: Make easier to define custom rules for estimation
 - It's possible to use original library instead of copy-pasting it. Only `MakeWebsocketConnection` is implemented in new & more atomic way
 - Refine code with an idea that there might be more clients than just Zoom
+    - Separate Voting and ZoomSession objects
 
 ## Zoom WebSDK
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -35,11 +34,12 @@ func main() {
 	// create the input channel that sends work to the goroutines
 	commands := make(chan common.Data)
 	// create the output channel that sends results back to the main function
-	actions := make(chan common.Data)
+	messages := make(chan common.Data)
 
 	// Goroutine responsible for command handling
-	go func(commands <-chan common.Data, actions chan<- common.Data) {
-		voting := &Voting{}
+	// `commands` is a channel for received messages from Zoom, `messages` - for messages to be sent back
+	go func(commands <-chan common.Data, messages chan<- common.Data) {
+		voting := &common.Voting{}
 		lastUpdate := time.Now().Unix()
 
 		for data := range commands {
@@ -47,7 +47,7 @@ func main() {
 			if data.Key == "timer" && data.Message == "status" && voting.IsStarted() && voting.StatusChanged(lastUpdate) {
 				msg := StatusMessage(voting.Status())
 				if msg != "" {
-					actions <- common.Data{
+					messages <- common.Data{
 						Key:     "public",
 						Message: StatusMessage(voting.Status()),
 					}
@@ -70,13 +70,16 @@ func main() {
 				data.Message = strings.TrimPrefix(data.Message, MESSAGE_PREFIX)
 
 				words := strings.Fields(data.Message)
-				wordsCount := len(words)
-				if wordsCount < 1 {
-					// TODO: Error message?
+				if len(words) < 1 {
+					// No command after "/" exist
+					messages <- common.Data{
+						Key:     "whisper",
+						Author:  data.Author,
+						Message: UNKNOWN_COMMAND_MESSAGE,
+					}
 					continue
 				}
 				args := words[1:]
-				fmt.Printf("%+v\n", args)
 				argsCount := len(args)
 
 				// COMMANDS
@@ -88,41 +91,29 @@ func main() {
 					}
 					voting, _ = NewVoting(title)
 
-					actions <- common.Data{
-						Key:     "public",
-						Message: StartedMessage(voting.Title),
-					}
-
-					actions <- common.Data{
-						Key:     "private",
-						Message: VOTING_GREETING_MESSAGE,
+					for _, msg := range common.StartMessages(voting.Title) {
+						messages <- msg
 					}
 				case "stop":
 					result := voting.Finish()
 
-					actions <- common.Data{
+					messages <- common.Data{
 						Key:     "public",
 						Message: StoppedMessage(*result),
 					}
 
 					if result.FinalScore > 0 {
-						actions <- common.Data{
-							Key:     "public",
-							Message: VOTING_ESTIMATED_MESSAGE,
-						}
-
-						actions <- common.Data{
-							Key:     "public",
-							Message: fmt.Sprintf("Final score: %d", result.FinalScore),
+						for _, msg := range common.FinishedVotingMessages(result.FinalScore) {
+							messages <- msg
 						}
 					} else {
-						actions <- common.Data{
+						messages <- common.Data{
 							Key:     "public",
 							Message: ScoreboardMessage(result.Scores),
 						}
 					}
 				default:
-					actions <- common.Data{
+					messages <- common.Data{
 						Key:     "whisper",
 						Author:  data.Author,
 						Message: UNKNOWN_COMMAND_MESSAGE,
@@ -130,14 +121,14 @@ func main() {
 				}
 			}
 		}
-	}(commands, actions)
+	}(commands, messages)
 
-	if err := MakeConnection(*meetingNumber, *meetingPassword, apiKey, apiSecret, commands, actions); err != nil {
+	if err := MakeConnection(*meetingNumber, *meetingPassword, apiKey, apiSecret, commands, messages); err != nil {
 		log.Fatal(err)
 	}
 
 	close(commands)
-	close(actions)
+	close(messages)
 }
 
 func MakeConnection(meetingNumber, meetingPassword, zoomApiKey, zoomApiSecret string, command chan common.Data, action <-chan common.Data) error {
