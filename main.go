@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ClydeSparrow/estimation-bot/pkg/common"
+	"github.com/ClydeSparrow/estimation-bot/pkg/estimation"
 	"github.com/ClydeSparrow/estimation-bot/pkg/zoom"
 )
 
@@ -32,92 +32,120 @@ func main() {
 	apiSecret := os.Getenv("ZOOM_JWT_API_SECRET")
 
 	// create the input channel that sends work to the goroutines
-	commands := make(chan common.Data)
+	commands := make(chan estimation.Data)
 	// create the output channel that sends results back to the main function
-	messages := make(chan common.Data)
+	messages := make(chan estimation.Data)
 
 	// Goroutine responsible for command handling
 	// `commands` is a channel for received messages from Zoom, `messages` - for messages to be sent back
-	go func(commands <-chan common.Data, messages chan<- common.Data) {
-		voting := &common.Voting{}
+	go func(commands <-chan estimation.Data, messages chan<- estimation.Data) {
+		voting, _ := estimation.NewVoting([]string{}, []estimation.Person{})
 		lastUpdate := time.Now().Unix()
 
 		for data := range commands {
-			// scheduled event to get voting status was received
-			if data.Key == "timer" && data.Message == "status" && voting.IsStarted() && voting.StatusChanged(lastUpdate) {
-				msg := StatusMessage(voting.Status())
-				if msg != "" {
-					messages <- common.Data{
-						Key:     "public",
-						Message: StatusMessage(voting.Status()),
+			// Specific commands
+			switch data.Key {
+			case "zoom:add":
+				voting.AddPerson(data.Author.ID, data.Author.Name)
+				continue
+			case "zoom:remove":
+				voting.RemovePerson(data.Author.ID)
+				continue
+			case "timer:status":
+				if voting.IsStarted() && voting.HasUpdates(lastUpdate) {
+					if msg := estimation.StatusMessage(voting.Status()); msg != "" {
+						messages <- estimation.Data{
+							Key:     "public",
+							Message: msg,
+						}
 					}
+					lastUpdate = time.Now().Unix()
 				}
-				lastUpdate = time.Now().Unix()
 				continue
 			}
 
+			// Perform action based on user non-command input
 			if !strings.HasPrefix(data.Message, MESSAGE_PREFIX) {
-				// USER REPLIES
 				switch strings.ToLower(data.Message) {
 				case "skip":
-					voting.SkippedVote(data.Author.Name)
+					if err := voting.Skipped(data.Author.ID); err != nil {
+						log.Println(err)
+					}
 				default:
-					if est, err := strconv.Atoi(data.Message); err == nil {
-						voting.AddVote(data.Author.Name, est)
+					est, err := strconv.Atoi(data.Message)
+					if err != nil {
+						log.Println("can't convert message to integer: ", data)
+					}
+					if err := voting.AddVote(data.Author.ID, est); err != nil {
+						log.Println(err)
 					}
 				}
-			} else {
-				data.Message = strings.TrimPrefix(data.Message, MESSAGE_PREFIX)
+				continue
+			}
 
-				words := strings.Fields(data.Message)
-				if len(words) < 1 {
-					// No command after "/" exist
-					messages <- common.Data{
-						Key:     "whisper",
-						Author:  data.Author,
-						Message: UNKNOWN_COMMAND_MESSAGE,
+			// COMMANDS
+			data.Message = strings.TrimPrefix(data.Message, MESSAGE_PREFIX)
+
+			words := strings.Fields(data.Message)
+			if len(words) < 1 {
+				// No command after "/" exist
+				messages <- estimation.Data{
+					Key:     "whisper",
+					Author:  data.Author,
+					Message: estimation.UNKNOWN_COMMAND_MESSAGE,
+				}
+				continue
+			}
+			args := words[1:]
+
+			switch strings.ToLower(words[0]) {
+			case "start":
+				voting, _ = estimation.NewVoting(args, voting.ListPeople())
+
+				for _, msg := range estimation.StartMessages(voting.Title) {
+					messages <- msg
+				}
+				for _, person := range voting.ListPeople() {
+					messages <- estimation.Data{
+						Key: "whisper",
+						Author: estimation.Person{
+							ID: person.ID,
+						},
+						Message: estimation.VOTING_GREETING_MESSAGE,
 					}
+				}
+			case "stop":
+				result := voting.Finish()
+				for _, msg := range estimation.FinishedVotingMessages(result) {
+					messages <- msg
+				}
+			case "ready":
+				peopleReady, err := voting.Ready(data.Author.ID)
+				if err != nil {
+					log.Println(err)
 					continue
 				}
-				args := words[1:]
-				argsCount := len(args)
 
-				// COMMANDS
-				switch strings.ToLower(words[0]) {
-				case "start":
-					title := ""
-					if argsCount > 0 {
-						title = args[0]
-					}
-					voting, _ = NewVoting(title)
+				messages <- estimation.Data{
+					Key:     "public",
+					Message: estimation.ReadyToVoteMessage(peopleReady),
+				}
+			case "recap":
+				peopleAsked, err := voting.AskedForRecap(data.Author.ID)
+				if err != nil {
+					log.Println(err)
+					continue
+				}
 
-					for _, msg := range common.StartMessages(voting.Title) {
-						messages <- msg
-					}
-				case "stop":
-					result := voting.Finish()
-
-					messages <- common.Data{
-						Key:     "public",
-						Message: StoppedMessage(*result),
-					}
-
-					if result.FinalScore > 0 {
-						for _, msg := range common.FinishedVotingMessages(result.FinalScore) {
-							messages <- msg
-						}
-					} else {
-						messages <- common.Data{
-							Key:     "public",
-							Message: ScoreboardMessage(result.Scores),
-						}
-					}
-				default:
-					messages <- common.Data{
-						Key:     "whisper",
-						Author:  data.Author,
-						Message: UNKNOWN_COMMAND_MESSAGE,
-					}
+				messages <- estimation.Data{
+					Key:     "public",
+					Message: estimation.RecapMessage(peopleAsked),
+				}
+			default:
+				messages <- estimation.Data{
+					Key:     "whisper",
+					Author:  data.Author,
+					Message: estimation.UNKNOWN_COMMAND_MESSAGE,
 				}
 			}
 		}
@@ -131,7 +159,7 @@ func main() {
 	close(messages)
 }
 
-func MakeConnection(meetingNumber, meetingPassword, zoomApiKey, zoomApiSecret string, command chan common.Data, action <-chan common.Data) error {
+func MakeConnection(meetingNumber, meetingPassword, zoomApiKey, zoomApiSecret string, command chan estimation.Data, action <-chan estimation.Data) error {
 	// TODO: I need another explanation
 	done := make(chan struct{})
 
@@ -166,7 +194,7 @@ func MakeConnection(meetingNumber, meetingPassword, zoomApiKey, zoomApiSecret st
 	}
 
 	// Goroutine where all the action takes place
-	go func(command chan<- common.Data) {
+	go func(command chan<- estimation.Data) {
 		defer close(done)
 
 		if err := session.Listen(command); err != nil {
@@ -180,18 +208,16 @@ func MakeConnection(meetingNumber, meetingPassword, zoomApiKey, zoomApiSecret st
 			switch data.Key {
 			case "public":
 				session.SendChatMessage(zoom.EVERYONE_CHAT_ID, data.Message)
-			case "private":
-				session.SendPrivateMessageToEveryone(data.Message)
+			// case "private":
+			// 	session.SendPrivateMessageToEveryone(data.Message)
 			case "whisper":
 				session.SendChatMessage(data.Author.ID, data.Message)
 			default:
-				log.Fatal("That's very bad")
+				log.Fatalf("That's very bad: %+v\n", data)
 			}
 		case <-votingStatusTicket.C:
-			command <- common.Data{
-				Key:     "timer",
-				Message: "status",
-			}
+			// TODO: dsdas
+			command <- estimation.Data{Key: "timer:status"}
 		case <-done:
 			log.Println("+ Received done signal")
 			return nil

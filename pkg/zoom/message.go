@@ -3,7 +3,6 @@ package zoom
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"reflect"
 
 	"github.com/gorilla/websocket"
@@ -101,7 +100,7 @@ func (session *ZoomSession) SendMessage(connection *websocket.Conn, eventNumber 
 		}
 		newMessage.Body = bodyBytes
 	}
-	log.Printf("Sending message (Evt: %s; Seq: %d): %s", MessageNumberToName[newMessage.Evt], newMessage.Seq, string(newMessage.Body))
+	// log.Printf("Sending message (Evt: %s; Seq: %d): %s", MessageNumberToName[newMessage.Evt], newMessage.Seq, string(newMessage.Body))
 
 	return connection.WriteJSON(newMessage)
 }

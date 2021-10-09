@@ -1,4 +1,4 @@
-# Estimation Bot
+# estimation Bot
 *Your small helper for Scrum ticket estimations during Zoom calls*
 
 
@@ -13,15 +13,15 @@ Overall architecture was developed around two channels
 ## TODO
 ### Commands
 - `/start TEXT` for better output in chat. `TEXT` can be Jira ticket number (e.g. PE-1234)
-- `/engineers N` to set minimal when automatic finishing of voting is possible
+- `/engineers N` to set minimal when automatic finishing of estimation is possible
 - `/recap` asks for a recap
 - `/ready` signals that an engineer is ready to estimate, outputs `user xyz is ready to estimate, X not ready`. If it reaches N set with the `/engineers` command outputs `all engineers are ready to estimate`
-- Command to set deadline for voting. Deadline should be apllied not only for one voting, but until end of meeting
+- Command to set deadline for estimation. Deadline should be apllied not only for one estimation, but until end of meeting
 
 ### Possible integrations
 - [JIRA] Set ticket's story points
 - [Slack] Forward estimated ticket to a slack channel(?) so that everyone is aware
-- [Export] Metrics about votings (# voted/skipped, voting result and duration, etc)
+- [Export] Metrics about votings (# voted/skipped, estimation result and duration, etc)
 
 ### Functionality
 - Gracefully exit/disconnect

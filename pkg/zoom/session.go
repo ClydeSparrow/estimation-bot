@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/ClydeSparrow/estimation-bot/pkg/common"
+	"github.com/ClydeSparrow/estimation-bot/pkg/estimation"
 )
 
 type ZoomSession struct {
@@ -30,7 +30,7 @@ type ZoomSession struct {
 	websocketConnection *websocket.Conn
 	sendSequenceNumber  uint32
 
-	peopleJoined []common.Person
+	peopleJoined []estimation.Person
 }
 
 func NewZoomSession(meetingNumber string, meetingPassword string, username string, hardwareID string, proxyURL string, zoomJwtApiKey string, zoomJwtApiSecret string) (*ZoomSession, error) {

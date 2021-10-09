@@ -1,23 +1,6 @@
 package zoom
 
-import "github.com/ClydeSparrow/estimation-bot/pkg/common"
-
-var BLACKLIST_VOTING_IDS = []int{
-	16781312, // Alya Makharinsky
-	16783360, // Philipp Steinbeck
-	16789504, // Rachid Harrassi
-	16790528, // Vedika Prakash
-	16793600, // Oskar Salmhofer
-}
-
-func (session *ZoomSession) IsAllowedToJoin(personID int) bool {
-	for _, id := range BLACKLIST_VOTING_IDS {
-		if personID == id {
-			return false
-		}
-	}
-	return true
-}
+import "github.com/ClydeSparrow/estimation-bot/pkg/estimation"
 
 func (session *ZoomSession) SendChatMessage(destNodeID int, text string) error {
 	sendBody := ConferenceChatRequest{
@@ -43,20 +26,20 @@ func (session *ZoomSession) SendPrivateMessageToEveryone(text string) error {
 	return nil
 }
 
-func (session *ZoomSession) AddPerson(newPersonID int, newPersonName string) []common.Person {
+func (session *ZoomSession) AddPerson(newPersonID int, newPersonName string) []estimation.Person {
 	for _, inCall := range session.peopleJoined {
 		if inCall.ID == newPersonID {
 			return session.peopleJoined
 		}
 	}
-	session.peopleJoined = append(session.peopleJoined, common.Person{
+	session.peopleJoined = append(session.peopleJoined, estimation.Person{
 		ID:   newPersonID,
 		Name: newPersonName,
 	})
 	return session.peopleJoined
 }
 
-func (session *ZoomSession) RemovePerson(leftPersonID int) []common.Person {
+func (session *ZoomSession) RemovePerson(leftPersonID int) []estimation.Person {
 	for idx, inCall := range session.peopleJoined {
 		if inCall.ID == leftPersonID {
 			session.peopleJoined[idx] = session.peopleJoined[len(session.peopleJoined)-1]

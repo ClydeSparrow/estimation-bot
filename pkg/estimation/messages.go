@@ -1,4 +1,4 @@
-package common
+package estimation
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	VOTING_GREETING_MESSAGE  = "Voting started, please send me your estimation score. Or type \"skip\" to indicate that you are not joining voting"
+	VOTING_GREETING_MESSAGE  = "Voting started, please send me your estimation score. Or type \"skip\" to indicate that you are not joining estimation"
 	VOTING_ESTIMATED_MESSAGE = "Voting is finished because SP difference is less than 3"
 	UNKNOWN_COMMAND_MESSAGE  = "Sorry, I don't understand this command"
 )
@@ -21,24 +21,38 @@ func StartMessages(title string) []Data {
 			Key:     "public",
 			Message: StartedMessage(title),
 		},
-		{
-			Key:     "private",
-			Message: VOTING_GREETING_MESSAGE,
-		},
 	}
 }
 
-func FinishedVotingMessages(score int) []Data {
-	return []Data{
+func FinishedVotingMessages(result VotingResult) []Data {
+	messages := []Data{
 		{
 			Key:     "public",
-			Message: VOTING_ESTIMATED_MESSAGE,
-		},
-		{
-			Key:     "private",
-			Message: fmt.Sprintf("Final score: %d", score),
+			Message: StoppedMessage(result),
 		},
 	}
+
+	if result.FinalScore > 0 {
+		messages = append(messages,
+			Data{
+				Key:     "public",
+				Message: VOTING_ESTIMATED_MESSAGE,
+			},
+			Data{
+				Key:     "public",
+				Message: fmt.Sprintf("Final score: %d", result.FinalScore),
+			},
+		)
+	} else {
+		messages = append(messages,
+			Data{
+				Key:     "public",
+				Message: ScoreboardMessage(result.Scores),
+			},
+		)
+	}
+
+	return messages
 }
 
 // ====================================
@@ -68,6 +82,16 @@ func StartedMessage(title string) string {
 	}
 }
 
+func StoppedMessage(result VotingResult) string {
+	var borderLine string
+	if result.Title == "" {
+		borderLine = "╚══════════════╝"
+	} else {
+		borderLine = fmt.Sprintf("╚═════ %s ═════╝", result.Title)
+	}
+	return fmt.Sprintf("%s\n\nVoting stopped\nAvg Score: %.2f\n", borderLine, result.AvgScore)
+}
+
 func ScoreboardMessage(scores map[int][]string) string {
 	b := new(bytes.Buffer)
 
@@ -76,4 +100,12 @@ func ScoreboardMessage(scores map[int][]string) string {
 	}
 	fmt.Fprint(b, "\nLet's start discussion!")
 	return b.String()
+}
+
+func ReadyToVoteMessage(readyToVote int) string {
+	return fmt.Sprintf("%d %sready to vote", readyToVote, util.HideWhenMultiple("engineer ", readyToVote))
+}
+
+func RecapMessage(askedForRecap int) string {
+	return fmt.Sprintf("%d %sasked for recap", askedForRecap, util.HideWhenMultiple("engineer ", askedForRecap))
 }

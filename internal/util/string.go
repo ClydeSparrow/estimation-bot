@@ -45,3 +45,10 @@ func Pluralize(keyword string, count int) string {
 	}
 	return keyword
 }
+
+func HideWhenMultiple(keyword string, count int) string {
+	if count == 1 {
+		return keyword
+	}
+	return ""
+}

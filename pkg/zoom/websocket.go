@@ -17,7 +17,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/ClydeSparrow/estimation-bot/pkg/common"
+	"github.com/ClydeSparrow/estimation-bot/pkg/estimation"
 )
 
 func (session *ZoomSession) GetWebsocketUrl(meetingInfo *MeetingInfo, wasInWaitingRoom bool) (string, error) {
@@ -98,7 +98,7 @@ func (session *ZoomSession) MakeWebsocketConnection(websocketUrl string, cookieS
 	return nil
 }
 
-func (session *ZoomSession) Listen(command chan<- common.Data) error {
+func (session *ZoomSession) Listen(command chan<- estimation.Data) error {
 	defer session.websocketConnection.Close()
 	done := make(chan struct{})
 
@@ -114,7 +114,7 @@ func (session *ZoomSession) Listen(command chan<- common.Data) error {
 				log.Print("failed to read:", err)
 				return
 			}
-			log.Printf("Received message (Evt: %s = %d; Seq: %d): %s", MessageNumberToName[message.Evt], message.Evt, message.Seq, string(message.Body))
+			// log.Printf("Received message (Evt: %s = %d; Seq: %d): %s", MessageNumberToName[message.Evt], message.Evt, message.Seq, string(message.Body))
 
 			if message.Evt == WS_CONF_JOIN_RES {
 				bodyData := JoinConferenceResponse{}
@@ -129,32 +129,38 @@ func (session *ZoomSession) Listen(command chan<- common.Data) error {
 			// convert generic json message to go type
 			m, err := GetMessageBody(message)
 			if err != nil {
-				log.Printf("Decoding message failed: %+v", err)
+				// log.Printf("Decoding message failed: %+v", err)
 				continue
 			}
 
 			switch m := m.(type) {
 			case *ConferenceRosterIndication:
 				// we want to have correct list of all people in meeting to send private messages
-				var engineersInCall []common.Person
 				for _, person := range m.Add {
 					// don't add ourself
-					if person.ID != session.JoinInfo.UserID && session.IsAllowedToJoin(person.ID) {
-						engineersInCall = session.AddPerson(person.ID, string(person.Dn2))
+					if person.ID != session.JoinInfo.UserID {
+						command <- estimation.Data{
+							Key: "zoom:add",
+							Author: estimation.Person{
+								ID:   person.ID,
+								Name: string(person.Dn2),
+							},
+						}
 					}
 				}
 				for _, person := range m.Remove {
-					engineersInCall = session.RemovePerson(person.ID)
-				}
-
-				if len(engineersInCall) > 0 {
-					log.Printf("Engineers in meeting: %+v", engineersInCall)
+					command <- estimation.Data{
+						Key: "zoom:remove",
+						Author: estimation.Person{
+							ID: person.ID,
+						},
+					}
 				}
 				continue
 			case *ConferenceChatIndication:
-				command <- common.Data{
+				command <- estimation.Data{
 					Key: "zoom",
-					Author: common.Person{
+					Author: estimation.Person{
 						Name: string(m.SenderName),
 						ID:   m.DestNodeID,
 					},
